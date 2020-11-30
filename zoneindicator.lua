@@ -10,6 +10,7 @@ texts = require('texts')
 resources = require('resources')
 
 local debug = false
+local inCutscene = false
 
 defaults = {}
 defaults.zone = {}
@@ -43,9 +44,11 @@ local zoneText = texts.new(settings.zone)
 zoneText:text("")
 
 show = function()
-   zoneText:show()
-   settings.draggable = true
-   settings:save()
+   if not hidden then
+      zoneText:show()
+      settings.draggable = true
+      settings:save()
+   end
 end
 
 hide = function()
@@ -58,9 +61,13 @@ toggleDebug = function() debug = not debug end
 commandEvent = function(command)
    if command == "show" then
       debugLog("Displaying zone name")
+      config.hidden = false
+      config:save()
       show()
    elseif command == "hide" then
       debugLog("Hiding zone name")
+      config.hidden = true
+      config:save()
       hide()
    elseif command == "debug" then
       toggleDebug()
@@ -83,9 +90,15 @@ function updateText()
    zoneText:text(zoneName)
 end
 
-local LOGIN_ZONE_PACKET = 0x0A
-loginEvent = function(id, _, _, _, _)
-   if(id == LOGIN_ZONE_PACKET) then updateText() end
+local ZONEIN_PACKET = 0x0A
+local ZONEOUT_PACKET = 0x0B
+chunkEvent = function(id, _, _, _, _)
+   if(id == ZONEIN_PACKET) then
+      updateText()
+      show()
+   elseif(id == ZONEOUT_PACKET) then
+      hide()
+   end
 end
 
 function replaceAbbreviations(zone)
@@ -96,7 +109,7 @@ end
 
 loadEvent = function()
    updateText()
-   if not hidden then show() end
+   show()
 end
 
 RELEASE_LEFT_BUTTON_TYPE = 2
@@ -118,10 +131,23 @@ mouseEvent = function(type, x, y, scrollDelta, blocked)
    end
 end
 
+CUTSCENE_STATUS = 4
+statusEvent = function(status)
+   debugLog("Status: " .. status)
+   if not inCutscene and status == CUTSCENE_STATUS then
+      inCutscene = true
+      hide()
+   else
+      inCutscene = false
+      show()
+   end
+end
+
 windower.register_event("addon command", commandEvent)
-windower.register_event("incoming chunk", loginEvent)
+windower.register_event("incoming chunk", chunkEvent)
 windower.register_event("load", loadEvent)
 windower.register_event("mouse", mouseEvent)
+windower.register_event("status change", statusEvent)
 
 function putLog(message)
    windower.add_to_chat("8", "Zone Indicator: " .. message)
